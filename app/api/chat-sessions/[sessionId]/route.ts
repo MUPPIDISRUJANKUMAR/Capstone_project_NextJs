@@ -10,6 +10,11 @@ export async function GET(
   try {
     const { sessionId } = params;
     
+    // Check if adminDb is initialized
+    if (!adminDb) {
+      return NextResponse.json({ error: 'Database not available' }, { status: 500 });
+    }
+    
     // Find the chat session by requestId (sessionId in this context)
     const sessionSnapshot = await adminDb.collection('chatSessions')
       .where('requestId', '==', sessionId)
@@ -53,6 +58,11 @@ export async function POST(
       return NextResponse.json({ error: 'Message and sender ID required' }, { status: 400 });
     }
 
+    // Check if adminDb is initialized
+    if (!adminDb) {
+      return NextResponse.json({ error: 'Database not available' }, { status: 500 });
+    }
+
     // Find the chat session
     const sessionSnapshot = await adminDb.collection('chatSessions')
       .where('requestId', '==', sessionId)
@@ -85,6 +95,11 @@ export async function POST(
       timestamp: Timestamp.now(),
       type: 'text'
     };
+
+    // Check if adminDb is initialized
+    if (!adminDb) {
+      return NextResponse.json({ error: 'Database not available' }, { status: 500 });
+    }
 
     await adminDb.collection('chatSessions').doc(sessionDoc.id).update({
       messages: [...(sessionData.messages || []), newMessage],

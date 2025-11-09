@@ -12,6 +12,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'User ID required' }, { status: 400 });
     }
 
+    // Check if adminDb is initialized
+    if (!adminDb) {
+      return NextResponse.json({ error: 'Database not available' }, { status: 500 });
+    }
+
     const snapshot = await adminDb.collection('notifications')
       .where('userId', '==', userId)
       .orderBy('createdAt', 'desc')
@@ -36,6 +41,11 @@ export async function POST(request: NextRequest) {
   try {
     const { notificationId, action } = await request.json();
 
+    // Check if adminDb is initialized
+    if (!adminDb) {
+      return NextResponse.json({ error: 'Database not available' }, { status: 500 });
+    }
+
     if (action === 'mark_read') {
       await adminDb.collection('notifications').doc(notificationId).update({
         read: true,
@@ -47,6 +57,11 @@ export async function POST(request: NextRequest) {
 
     if (action === 'mark_all_read') {
       const { userId } = await request.json();
+      
+      // Check if adminDb is initialized
+      if (!adminDb) {
+        return NextResponse.json({ error: 'Database not available' }, { status: 500 });
+      }
       
       const batch = adminDb.batch();
       const snapshot = await adminDb.collection('notifications')

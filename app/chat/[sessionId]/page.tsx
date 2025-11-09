@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../../src/contexts/AuthContext";
-import { ChatInterface } from "../../../src/components/chat/ChatInterface";
+import { FirebaseChatInterface } from "../../../src/components/chat/FirebaseChatInterface";
 import { Navbar } from "../../../src/components/layout/Navbar";
 import { Sidebar } from "../../../src/components/layout/Sidebar";
 import { Notifications } from "../../../src/components/notifications/Notifications";
@@ -163,7 +163,7 @@ export default function ChatSessionPage({ params }: PageProps) {
                   You're now in a secure chat session
                 </p>
               </div>
-              <ChatInterface
+              <FirebaseChatInterface
                 title="Secure Chat Session"
                 type="chat"
                 sessionId={sessionId}
