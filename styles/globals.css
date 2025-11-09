@@ -1,0 +1,6 @@
+/* Global styles for Next.js app
+   This imports the Vite/React global CSS (src/index.css) from the migrated project
+*/
+@import url("../src/index.css");
+
+/* Add any extra global overrides here if needed. */
