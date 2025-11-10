@@ -10,14 +10,20 @@ interface ChatMessage {
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
-export async function POST(request: Request) {
-  if (!GEMINI_API_KEY) {
-    return NextResponse.json({ error: 'Gemini API key not configured' }, { status: 500 })
+const fallbackResponse = (messages: ChatMessage[]) => {
+  const lastQuestion = [...messages].reverse().find(msg => msg.role === 'user')?.content
+  if (lastQuestion) {
+    return `I'm having trouble reaching the AI service right now, but here are a few next steps for "${lastQuestion.slice(0, 120)}":\n\n1. Break the goal into small, daily actions.\n2. Reach out to your campus career center for resources and practice.\n3. Connect with alumni on CampusConnect who have experience in this area.\n\nFeel free to ask again in a bit—I'll try to fetch a richer answer once the service is back.`
   }
+  return "I'm having trouble reaching the AI service right now. Try again in a minute, or explore campus career resources and alumni mentors for immediate guidance."
+}
 
+export async function POST(request: Request) {
+  let conversation: ChatMessage[] = []
   try {
     const body = await request.json()
     const messages: ChatMessage[] = Array.isArray(body?.messages) ? body.messages : []
+    conversation = messages
 
     if (messages.length === 0) {
       return NextResponse.json({ error: 'No messages provided' }, { status: 400 })
@@ -34,56 +40,96 @@ export async function POST(request: Request) {
       ]
     }))
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-        GEMINI_MODEL
-      )}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            role: 'system',
-            parts: [{ text: systemPrompt }]
-          },
-          contents,
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: undefined
-          }
-        })
-      }
-    )
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      console.error('Gemini chat error', data)
-      return NextResponse.json({ error: 'Failed to generate response' }, { status: response.status })
+    if (!GEMINI_API_KEY) {
+      console.warn('[GeminiChat] Missing GEMINI_API_KEY; using fallback response')
+      return NextResponse.json({ reply: fallbackResponse(messages) })
     }
 
+    const modelsToTry = Array.from(new Set([GEMINI_MODEL, 'gemini-1.5-flash', 'gemini-pro']))
     let text = ''
-    if (Array.isArray(data?.candidates)) {
-      for (const candidate of data.candidates) {
-        if (candidate?.content?.parts) {
-          text = candidate.content.parts
-            .map((part: { text?: string }) => part?.text || '')
-            .join('')
-            .trim()
+
+    for (const model of modelsToTry) {
+      try {
+        const lastUserMessage = (() => {
+          for (let i = trimmedMessages.length - 1; i >= 0; i--) {
+            if (trimmedMessages[i].role === 'user') {
+              return trimmedMessages[i].content?.slice(0, 80) || null
+            }
+          }
+          return null
+        })()
+
+        console.log('[GeminiChat] Sending request', {
+          model,
+          messageCount: contents.length,
+          lastUserMessage,
+        })
+
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+            model
+          )}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              systemInstruction: {
+                role: 'system',
+                parts: [{ text: systemPrompt }]
+              },
+              contents,
+              generationConfig: {
+                temperature: 0.4,
+                maxOutputTokens: undefined
+              }
+            })
+          }
+        )
+
+        const data = await response.json().catch(() => undefined)
+
+        if (!response.ok) {
+          console.error('[GeminiChat] Model request failed', {
+            model,
+            status: response.status,
+            statusText: response.statusText,
+            error: data?.error || data
+          })
+          continue
         }
-        if (text) break
+
+        if (Array.isArray(data?.candidates)) {
+          for (const candidate of data.candidates) {
+            if (candidate?.content?.parts) {
+              text = candidate.content.parts
+                .map((part: { text?: string }) => part?.text || '')
+                .join('')
+                .trim()
+            }
+            if (text) break
+          }
+        }
+
+        if (text) {
+          console.log('[GeminiChat] Model succeeded', { model, length: text.length })
+          break
+        }
+
+        console.warn('[GeminiChat] Empty response body from model', { model })
+      } catch (error) {
+        console.error('[GeminiChat] Fetch error for model', { model, error })
       }
     }
 
     if (!text) {
-      text = 'I can help with career-related topics. Could you rephrase or ask a different question?'
+      text = fallbackResponse(messages)
     }
 
     return NextResponse.json({ reply: text })
   } catch (error) {
     console.error('Chat route error', error)
-    return NextResponse.json({ error: 'Unexpected error' }, { status: 500 })
+    return NextResponse.json({ reply: fallbackResponse(conversation) }, { status: 200 })
   }
 }
