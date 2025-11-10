@@ -74,7 +74,7 @@ export async function GET(request: Request) {
 
     // If Gemini is configured, prepare a prompt and call it to re-rank candidates
   const geminiKey = process.env.GEMINI_API_KEY
-  const geminiModel = process.env.GEMINI_MODEL
+  const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
     const localScore = (cand: any) => {
       const studentSkills = (student.skills || []).map((s: string) => s.toLowerCase())
@@ -86,7 +86,7 @@ export async function GET(request: Request) {
 
     let finalMatches: AIMatch[] = []
 
-    if (geminiKey && geminiModel) {
+  if (geminiKey) {
       try {
         // Build a compact prompt for re-ranking. Keep it concise to avoid large payloads.
   // Per new requirement: pick up to 20 alumni candidates to send to Gemini
@@ -122,7 +122,7 @@ export async function GET(request: Request) {
         }
 
         // Compose endpoint using Gemini "generateContent" path (required for Gemini 1.5/2.x models)
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(geminiKey)}`
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(geminiKey)}`
 
         const res = await fetch(endpoint, {
           method: 'POST',
