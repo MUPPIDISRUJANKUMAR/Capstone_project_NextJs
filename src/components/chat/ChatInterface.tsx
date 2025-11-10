@@ -24,22 +24,38 @@ interface ChatInterfaceProps {
   type?: 'chat' | 'faq'
 }
 
+const buildWelcomeMessage = (type: 'chat' | 'faq'): Message => ({
+  id: 'welcome',
+  content: type === 'faq'
+    ? "Hi! I'm your AI career assistant. Ask me anything about career paths, interview prep, or professional development!"
+    : "Hey Alex! Thanks for connecting. I'd be happy to help with your career questions.",
+  sender: type === 'faq' ? 'ai' : 'other',
+  timestamp: new Date().toISOString(),
+  senderName: type === 'faq' ? 'AI Assistant' : 'Sarah Rodriguez',
+  avatar: type === 'faq' ? undefined : 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face'
+})
+
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
   title = "Chat",
   type = 'chat'
 }) => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      content: type === 'faq' 
-        ? "Hi! I'm your AI career assistant. Ask me anything about career paths, interview prep, or professional development!" 
-        : "Hey Alex! Thanks for connecting. I'd be happy to help with your career questions.",
-      sender: type === 'faq' ? 'ai' : 'other',
-      timestamp: new Date().toISOString(),
-      senderName: type === 'faq' ? 'AI Assistant' : 'Sarah Rodriguez',
-      avatar: type === 'faq' ? undefined : 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face'
+  const storageKey = type === 'faq' ? 'chat-history:faq-assistant' : 'chat-history:direct-chat'
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = window.localStorage.getItem(storageKey)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load saved chat history', error)
+      }
     }
-  ])
+    return [buildWelcomeMessage(type)]
+  })
   const [newMessage, setNewMessage] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -58,6 +74,32 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       scrollToBottom()
     }
   }, [messages, autoScroll])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(messages))
+    } catch (error) {
+      console.error('Failed to persist chat history', error)
+    }
+  }, [messages, storageKey])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(storageKey)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed)
+          return
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh chat history', error)
+    }
+    setMessages([buildWelcomeMessage(type)])
+  }, [storageKey, type])
 
   useEffect(() => {
     return () => {
@@ -211,7 +253,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }
 
   return (
-    <div className="max-w-5xl mx-auto h-full px-4">
+    <div className="max-w-5xl mx-auto px-4">
       <Card className="h-[600px] flex flex-col overflow-hidden">
         <CardHeader className="border-b">
           <CardTitle className="flex items-center gap-2 justify-center">
@@ -221,7 +263,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </CardTitle>
         </CardHeader>
         
-        <CardContent className="flex-1 flex flex-col p-0">
+        <CardContent className="flex-1 flex flex-col p-0 min-h-0">
           {/* Messages */}
           <div
             ref={messagesContainerRef}
