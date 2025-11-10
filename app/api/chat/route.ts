@@ -8,7 +8,7 @@ interface ChatMessage {
 }
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
 export async function POST(request: Request) {
   if (!GEMINI_API_KEY) {
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
           contents,
           generationConfig: {
             temperature: 0.4,
-            maxOutputTokens: 1024
+            maxOutputTokens: undefined
           }
         })
       }
