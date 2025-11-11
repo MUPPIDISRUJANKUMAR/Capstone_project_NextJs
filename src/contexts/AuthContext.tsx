@@ -48,7 +48,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const fetchUserProfile = async (uid: string, firebaseUser?: FirebaseUser): Promise<AppUser | null> => {
-  if (!firebaseUser) return null;
+  if (!firebaseUser || !db) return null;
 
   console.log(`[fetchUserProfile] Starting for UID: ${uid}`);
   const userRef = doc(db, "users", uid);
@@ -68,11 +68,14 @@ const fetchUserProfile = async (uid: string, firebaseUser?: FirebaseUser): Promi
         id: uid,
         email: firebaseUser.email || '',
         name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+        avatar: '',
         role: 'student',
         verified: firebaseUser.emailVerified,
-        createdAt: serverTimestamp(),
-        theme: 'light',
-      };
+        skills: [],
+        interests: [],
+        theme: 'light', // Set default theme on registration
+        createdAt: serverTimestamp() as any,
+      } as any;
       await setDoc(userRef, defaultProfile);
       userProfile = defaultProfile;
       console.log("[fetchUserProfile] Created and saved default profile:", userProfile);

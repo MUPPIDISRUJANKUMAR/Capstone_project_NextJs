@@ -44,6 +44,12 @@ export function EditProfileModal({ isOpen, onClose }: EditProfileModalProps) {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Check if storage is available
+    if (!storage) {
+      showToast("Storage not available. Please check Firebase configuration.", "error");
+      return;
+    }
+
     setIsUploading(true);
     showToast("Uploading image...", "info");
 
