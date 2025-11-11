@@ -25,49 +25,7 @@ interface NotificationProviderProps {
 }
 
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
-  const [notifications, setNotifications] = useState<Notification[]>([
-    // Hardcoded notifications
-    {
-      id: '1',
-      title: 'New Alumni Match',
-      message: 'You have a new alumni match: John Doe.',
-      link: '/discover',
-      read: false,
-      timestamp: new Date().toISOString(),
-    },
-    {
-      id: '2',
-      title: 'Job Application Update',
-      message: 'Your application for Software Engineer at Google has been viewed.',
-      link: '/jobboard',
-      read: false,
-      timestamp: new Date().toISOString(),
-    },
-    {
-      id: '3',
-      title: 'Event Reminder',
-      message: 'Your upcoming event "Tech Conference 2025" is tomorrow.',
-      link: '/events',
-      read: true,
-      timestamp: new Date().toISOString(),
-    },
-    {
-      id: '4',
-      title: 'New Message',
-      message: 'You have a new message from Jane Smith.',
-      link: '/chat',
-      read: true,
-      timestamp: new Date().toISOString(),
-    },
-    {
-      id: '5',
-      title: 'Profile Completion',
-      message: 'Your profile is 80% complete. Complete it now to get better matches.',
-      link: '/profile',
-      read: true,
-      timestamp: new Date().toISOString(),
-    },
-  ]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const addNotification = (notification: Omit<Notification, 'id' | 'read' | 'timestamp'>) => {
     const newNotification: Notification = {

@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 import React, { useState } from "react";
 import { motion } from "framer-motion";
@@ -93,13 +93,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onToggleMode }) => {
 
   const demoLogins = [
     {
-      email: "2203a51249@sru.edu.in",
-      password: "123456",
+      email: "2203a51118@sru.edu.in",
+      password: "Student@123",
       role: "Student",
     },
     {
-      email: "sarah.rodriguez@techcorp.com",
-      password: "alumnipass",
+      email: "2203a51249@sru.edu.in",
+      password: "12345678",
       role: "Alumni",
     },
     { email: "srujanmuppidi@gmail.com", password: "123456", role: "Admin" },

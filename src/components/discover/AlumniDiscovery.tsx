@@ -3,14 +3,24 @@
 import React, { useState, useEffect } from "react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../../lib/firebase";
-import { motion } from "framer-motion";
-import { Search, Filter, MapPin, Building, Award, Star } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Search, Filter, MapPin, Building, Award, Star, Send, Loader2, MessageSquare, Clock } from "lucide-react";
 import { Card, CardHeader, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "../ui/avatar";
 import { User, UserRole } from "../../types";
+import { useAuth } from "../../contexts/AuthContext";
+
+interface ChatRequest {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  message: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: Date;
+}
 
 interface AlumniWithSource extends User {
   verified?: boolean;
@@ -30,8 +40,14 @@ interface AlumniWithSource extends User {
 }
 
 export const AlumniDiscovery: React.FC = () => {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndustry, setSelectedIndustry] = useState("all");
+  const [selectedAlumni, setSelectedAlumni] = useState<AlumniWithSource | null>(null);
+  const [requestModal, setRequestModal] = useState(false);
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [requestMessage, setRequestMessage] = useState('');
+  const [sentRequests, setSentRequests] = useState<ChatRequest[]>([]);
 
   const initialAlumni: AlumniWithSource[] = [
     {
@@ -209,6 +225,79 @@ export const AlumniDiscovery: React.FC = () => {
     fetchAlumniData();
   }, []);
 
+  // Fetch user's sent requests
+  useEffect(() => {
+    if (user?.id) {
+      fetchRequests();
+    }
+  }, [user]);
+
+  const fetchRequests = async () => {
+    if (!user?.id) return;
+
+    try {
+      const response = await fetch(`/api/chat-requests?userId=${user.id}&status=sent`);
+      const data = await response.json();
+      
+      if (response.ok) {
+        setSentRequests(data.requests || []);
+      } else {
+        console.warn('Firebase Admin not configured, using empty requests for demo');
+        setSentRequests([]);
+      }
+    } catch (error) {
+      console.error('Error fetching sent requests:', error);
+      setSentRequests([]);
+    }
+  };
+
+  const handleSendRequest = async () => {
+    if (!selectedAlumni || !user?.id) return;
+
+    setRequestLoading(true);
+    try {
+      const response = await fetch('/api/chat-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'send',
+          fromUserId: user.id,
+          toUserId: selectedAlumni.id,
+          message: requestMessage || `Hi ${selectedAlumni.name}, I'd like to connect with you and learn more about your experience at ${selectedAlumni.company}.`
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setRequestModal(false);
+        setRequestMessage('');
+        fetchRequests(); // Refresh requests
+        
+        // Show success toast/popup
+        alert('✅ Connection request sent successfully! The alumni will be notified.');
+      } else {
+        console.error('Failed to send request:', data.error);
+        alert('❌ Failed to send request. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error sending request:', error);
+      alert('❌ Network error. Please try again.');
+    } finally {
+      setRequestLoading(false);
+    }
+  };
+
+  const hasPendingRequest = (alumniId: string) => {
+    return sentRequests.some(req => req.toUserId === alumniId && req.status === 'pending');
+  };
+
+  const hasAcceptedRequest = (alumniId: string) => {
+    return sentRequests.some(req => req.toUserId === alumniId && req.status === 'accepted');
+  };
+
   const industries = [
     "all",
     "Technology",
@@ -376,13 +465,108 @@ export const AlumniDiscovery: React.FC = () => {
                     </span>
                   </div>
 
-                  <Button className="w-full">Send Request</Button>
+                  <Button 
+                    className="w-full"
+                    disabled={hasPendingRequest(alumni.id) || hasAcceptedRequest(alumni.id)}
+                    onClick={() => {
+                      setSelectedAlumni(alumni);
+                      setRequestModal(true);
+                    }}
+                  >
+                    {hasAcceptedRequest(alumni.id) ? (
+                      <>
+                        <MessageSquare className="h-4 w-4 mr-2" />
+                        Start Chat
+                      </>
+                    ) : hasPendingRequest(alumni.id) ? (
+                      <>
+                        <Clock className="h-4 w-4 mr-2" />
+                        Pending
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-2" />
+                        Send Request
+                      </>
+                    )}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           </motion.div>
         ))}
       </div>
+
+      {/* Send Request Modal */}
+      <AnimatePresence>
+        {requestModal && selectedAlumni && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setRequestModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-background rounded-lg p-6 max-w-md w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <Avatar className="w-12 h-12">
+                  <AvatarImage src={selectedAlumni.avatar} />
+                  <AvatarFallback>
+                    {selectedAlumni.name.split(' ').map(n => n[0]).join('')}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="font-semibold">Send Connection Request</h3>
+                  <p className="text-sm text-muted-foreground">{selectedAlumni.name}</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Message (optional)</label>
+                  <textarea
+                    value={requestMessage}
+                    onChange={(e) => setRequestMessage(e.target.value)}
+                    placeholder={`Introduce yourself and why you'd like to connect with ${selectedAlumni.name}...`}
+                    className="w-full min-h-[80px] p-2 border rounded-md text-sm resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setRequestModal(false);
+                      setRequestMessage('');
+                    }}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSendRequest}
+                    disabled={requestLoading}
+                    className="flex-1"
+                  >
+                    {requestLoading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-2" />
+                    )}
+                    Send Request
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {filteredAlumni.length === 0 && (
         <div className="text-center py-12">
