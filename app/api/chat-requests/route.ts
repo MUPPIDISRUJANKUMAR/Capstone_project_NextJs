@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
         });
 
       case 'accept':
+      case 'approve':
         // Accept chat request
         const acceptRef = adminDb.collection('chatRequests').doc(requestId);
         const requestDoc = await acceptRef.get();
@@ -157,6 +158,7 @@ export async function POST(request: NextRequest) {
         });
 
       case 'decline':
+      case 'disapprove':
         // Decline chat request
         const declineRef = adminDb.collection('chatRequests').doc(requestId);
         const declineDoc = await declineRef.get();
@@ -212,66 +214,65 @@ export async function POST(request: NextRequest) {
           message: 'Chat request declined'
         });
 
-      default:
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
+
   } catch (error) {
     console.error('Error in chat requests API:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
 
 export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get('userId');
+  const role = searchParams.get('role');
+  const rawStatus = searchParams.get('status');
+
   try {
-    console.log('GET chat requests called');
-    
-    // Check if Firebase Admin is initialized
     if (!adminDb) {
-      console.error('Firebase Admin not initialized');
-      return NextResponse.json({ 
-        error: 'Firebase Admin not available',
-        message: 'Server configuration error. Please check Firebase Admin credentials.'
-      }, { status: 500 });
+      return NextResponse.json({ error: 'Firebase Admin not available' }, { status: 500 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-    const status = searchParams.get('status');
+    let status = rawStatus || undefined;
+    if (status === 'approved') status = 'accepted';
 
-    console.log('Fetching requests for user:', userId, 'status:', status);
+    let query: FirebaseFirestore.Query = adminDb.collection('chatRequests');
 
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID required' }, { status: 400 });
-    }
-
-    let collectionRef = adminDb.collection('chatRequests');
-    let query;
-    
-    if (status === 'sent') {
-      query = collectionRef.where('fromUserId', '==', userId);
-    } else if (status === 'received') {
-      query = collectionRef.where('toUserId', '==', userId).where('status', '==', 'pending');
+    if (userId && status) {
+      if (status === 'sent') {
+        query = query.where('fromUserId', '==', userId);
+      } else if (status === 'received') {
+        query = query.where('toUserId', '==', userId);
+      } else if (['accepted', 'declined', 'pending'].includes(status)) {
+        if (role === 'alumni') {
+          query = query.where('toUserId', '==', userId).where('status', '==', status);
+        } else if (role === 'student') {
+          query = query.where('fromUserId', '==', userId).where('status', '==', status);
+        } else {
+          const [asSenderSnap, asRecipientSnap] = await Promise.all([
+            adminDb.collection('chatRequests').where('fromUserId', '==', userId).where('status', '==', status).get(),
+            adminDb.collection('chatRequests').where('toUserId', '==', userId).where('status', '==', status).get(),
+          ]);
+          const combined = [
+            ...asSenderSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+            ...asRecipientSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          ];
+          return NextResponse.json({ requests: combined });
+        }
+      } else {
+        return NextResponse.json({ requests: [] });
+      }
+    } else if (userId) {
+      query = query.where('toUserId', '==', userId).where('status', '==', 'pending');
     } else {
-      // Get all requests for this user (sent or received)
-      query = collectionRef.where('fromUserId', '==', userId);
+      return NextResponse.json({ requests: [] });
     }
 
-    const snapshot = await query.orderBy('createdAt', 'desc').get();
-    const requests = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate(),
-      updatedAt: doc.data().updatedAt?.toDate()
-    }));
-
-    console.log('Found requests:', requests.length);
-
+    const snapshot = await query.get();
+    const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     return NextResponse.json({ requests });
   } catch (error) {
     console.error('Error fetching chat requests:', error);
-    return NextResponse.json({ 
-      error: error.message,
-      message: 'Failed to fetch chat requests'
-    }, { status: 500 });
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

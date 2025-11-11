@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { StudentDashboard } from "../../src/components/dashboard/StudentDashboard";
+import { AlumniDashboard } from "../../src/components/dashboard/AlumniDashboard";
 import { AdminDashboard } from "../../src/components/admin/AdminDashboard";
 import { Navbar } from "../../src/components/layout/Navbar";
 import { Sidebar } from "../../src/components/layout/Sidebar";
@@ -43,6 +44,8 @@ export default function DashboardPage() {
           <div className="pt-5 px-6 pb-6 lg:pt-6 lg:px-8 lg:pb-8">
             {user?.role === 'admin' ? (
               <AdminDashboard />
+            ) : user?.role === 'alumni' ? (
+              <AlumniDashboard />
             ) : (
               <StudentDashboard />
             )}
