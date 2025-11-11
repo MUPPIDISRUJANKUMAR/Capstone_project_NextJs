@@ -147,7 +147,9 @@ export const UserListWithRequests: React.FC<UserListWithRequestsProps> = ({
         alert('✅ Chat request accepted! You can now start the session.');
         fetchRequests();
         if (onSessionStart) {
-          onSessionStart(data.sessionId);
+          // Use the requestId as the session identifier because the chat API
+          // looks up chatSessions by requestId
+          onSessionStart(requestId);
         }
       } else {
         alert('❌ Failed to accept request.');
@@ -190,7 +192,10 @@ export const UserListWithRequests: React.FC<UserListWithRequestsProps> = ({
   };
 
   const hasAcceptedRequest = (userId: string) => {
-    return sentRequests.some(req => req.toUserId === userId && req.status === 'accepted');
+    // Accepted request either sent by me to them, or received by me from them
+    const sentAccepted = sentRequests.some(req => req.toUserId === userId && req.status === 'accepted');
+    const receivedAccepted = receivedRequests.some(req => req.fromUserId === userId && req.status === 'accepted');
+    return sentAccepted || receivedAccepted;
   };
 
   return (
@@ -200,7 +205,7 @@ export const UserListWithRequests: React.FC<UserListWithRequestsProps> = ({
           <CardTitle className="text-sm font-medium flex items-center gap-2 justify-between">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4" />
-              Connect with Alumni
+              Connect with Users
             </div>
             {receivedRequests.length > 0 && (
               <Button
@@ -278,8 +283,13 @@ export const UserListWithRequests: React.FC<UserListWithRequestsProps> = ({
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{userItem.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{userItem.role}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium truncate">{userItem.name}</p>
+                      <Badge variant="secondary" className="text-[10px] capitalize">{userItem.role}</Badge>
+                    </div>
+                    {userItem.email && (
+                      <p className="text-xs text-muted-foreground truncate">{userItem.email}</p>
+                    )}
                   </div>
                   <div className="ml-auto">
                     {hasAcceptedRequest(userItem.id) ? (
@@ -287,10 +297,12 @@ export const UserListWithRequests: React.FC<UserListWithRequestsProps> = ({
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // Find the session and start it
-                          const request = sentRequests.find(req => req.toUserId === userItem.id && req.status === 'accepted');
+                          // Find the accepted request (sent or received) and start it using its requestId
+                          const request =
+                            sentRequests.find(req => req.toUserId === userItem.id && req.status === 'accepted') ||
+                            receivedRequests.find(req => req.fromUserId === userItem.id && req.status === 'accepted');
                           if (request && onSessionStart) {
-                            onSessionStart(request.id); // Use request ID as session identifier
+                            onSessionStart(request.id);
                           }
                         }}
                         className="text-xs"

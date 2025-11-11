@@ -106,6 +106,26 @@ export async function POST(
       lastMessage: Timestamp.now()
     });
 
+    // Create a notification for the other participant
+    try {
+      const recipientId = (sessionData.participantIds as string[]).find((id: string) => id !== senderId);
+      if (recipientId) {
+        await adminDb.collection('notifications').add({
+          userId: recipientId,
+          type: 'chat_message',
+          title: 'New Message',
+          message: `${senderName || 'Someone'}: ${String(message).slice(0, 120)}`,
+          sessionId: sessionDoc.id,
+          requestId: sessionData.requestId,
+          read: false,
+          createdAt: Timestamp.now()
+        });
+      }
+    } catch (notifyErr) {
+      console.error('Failed to create chat message notification:', notifyErr);
+      // Do not fail the message send due to notification issues
+    }
+
     return NextResponse.json({
       success: true,
       message: newMessage

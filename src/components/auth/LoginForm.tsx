@@ -102,7 +102,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onToggleMode }) => {
       password: "12345678",
       role: "Alumni",
     },
-    { email: "srujanmuppidi@gmail.com", password: "123456", role: "Admin" },
   ];
 
   return (
