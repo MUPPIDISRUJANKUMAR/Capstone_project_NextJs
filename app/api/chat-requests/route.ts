@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, adminAuth } from '../../../src/lib/firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
+import { sendEmail, emailTemplates } from '../../../src/lib/email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,6 +41,31 @@ export async function POST(request: NextRequest) {
           read: false,
           createdAt: Timestamp.now()
         });
+
+        // Send email notification
+        try {
+          // Get recipient's email from Firestore
+          const recipientDoc = await adminDb.collection('users').doc(toUserId).get();
+          const recipientData = recipientDoc.data();
+          
+          // Get sender's name
+          const senderDoc = await adminDb.collection('users').doc(fromUserId).get();
+          const senderData = senderDoc.data();
+          
+          if (recipientData?.email && senderData?.displayName) {
+            const emailContent = emailTemplates.chatRequest(senderData.displayName, message || 'Would like to start a conversation');
+            await sendEmail({
+              to: recipientData.email,
+              subject: emailContent.subject,
+              text: emailContent.text,
+              html: emailContent.html
+            });
+            console.log('Email notification sent to:', recipientData.email);
+          }
+        } catch (emailError) {
+          console.error('Failed to send email notification:', emailError);
+          // Continue with the request even if email fails
+        }
 
         return NextResponse.json({
           success: true,
@@ -97,6 +123,33 @@ export async function POST(request: NextRequest) {
           createdAt: Timestamp.now()
         });
 
+        // Send email notifications for accepted request
+        try {
+          // Get user details for emails
+          const [requesterDoc, accepterDoc] = await Promise.all([
+            adminDb.collection('users').doc(requestData.fromUserId).get(),
+            adminDb.collection('users').doc(requestData.toUserId).get()
+          ]);
+          
+          const requesterData = requesterDoc.data();
+          const accepterData = accepterDoc.data();
+          
+          // Send email to requester
+          if (requesterData?.email) {
+            const emailContent = emailTemplates.requestAccepted(requesterData.displayName || 'User', sessionRef.id);
+            await sendEmail({
+              to: requesterData.email,
+              subject: emailContent.subject,
+              text: emailContent.text,
+              html: emailContent.html
+            });
+            console.log('Acceptance email sent to requester:', requesterData.email);
+          }
+        } catch (emailError) {
+          console.error('Failed to send acceptance email:', emailError);
+          // Continue even if email fails
+        }
+
         return NextResponse.json({
           success: true,
           sessionId: sessionRef.id,
@@ -132,6 +185,27 @@ export async function POST(request: NextRequest) {
           read: false,
           createdAt: Timestamp.now()
         });
+
+        // Send email notification for declined request
+        try {
+          // Get requester's details for email
+          const requesterDoc = await adminDb.collection('users').doc(declineData.fromUserId).get();
+          const requesterData = requesterDoc.data();
+          
+          if (requesterData?.email) {
+            const emailContent = emailTemplates.requestDeclined(requesterData.displayName || 'User');
+            await sendEmail({
+              to: requesterData.email,
+              subject: emailContent.subject,
+              text: emailContent.text,
+              html: emailContent.html
+            });
+            console.log('Decline email sent to requester:', requesterData.email);
+          }
+        } catch (emailError) {
+          console.error('Failed to send decline email:', emailError);
+          // Continue even if email fails
+        }
 
         return NextResponse.json({
           success: true,
