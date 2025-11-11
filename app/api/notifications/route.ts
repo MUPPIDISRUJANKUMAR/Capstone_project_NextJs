@@ -17,29 +17,56 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Database not available' }, { status: 500 });
     }
 
-    const snapshot = await adminDb.collection('notifications')
-      .where('userId', '==', userId)
-      .orderBy('createdAt', 'desc')
-      .limit(50)
-      .get();
+    console.log('Notifications GET userId:', userId);
+
+    let snapshot;
+    try {
+      snapshot = await adminDb
+        .collection('notifications')
+        .where('userId', '==', userId)
+        .orderBy('createdAt', 'desc')
+        .limit(50)
+        .get();
+    } catch (e: any) {
+      if (e?.code === 9 || (typeof e?.message === 'string' && e.message.includes('FAILED_PRECONDITION'))) {
+        snapshot = await adminDb
+          .collection('notifications')
+          .where('userId', '==', userId)
+          .get();
+      } else {
+        throw e;
+      }
+    }
+
+    console.log('Notifications snapshot size:', snapshot.size);
+
+    if (snapshot.size === 0) {
+      const fallback = await adminDb
+        .collection('notifications')
+        .where('userId', '==', userId)
+        .get();
+      snapshot = fallback;
+      console.log('Notifications fallback size:', snapshot.size);
+    }
 
     const notifications = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate()
+      createdAt: (doc.data() as any).createdAt?.toDate?.() ?? (doc.data() as any).createdAt
     }));
 
     return NextResponse.json({ notifications });
   } catch (error) {
     console.error('Error fetching notifications:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: (error as any).message }, { status: 500 });
   }
 }
 
 // POST - Mark notification as read
 export async function POST(request: NextRequest) {
   try {
-    const { notificationId, action } = await request.json();
+    const body = await request.json();
+    const { notificationId, action, userId } = body;
 
     // Check if adminDb is initialized
     if (!adminDb) {
@@ -56,8 +83,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'mark_all_read') {
-      const { userId } = await request.json();
-      
       // Check if adminDb is initialized
       if (!adminDb) {
         return NextResponse.json({ error: 'Database not available' }, { status: 500 });
@@ -84,6 +109,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
     console.error('Error updating notifications:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: (error as any).message }, { status: 500 });
   }
 }

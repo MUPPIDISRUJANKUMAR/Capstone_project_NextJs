@@ -62,8 +62,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, isMobileSidebarOp
         break;
       case 'alumni':
         roleSpecificItems = [
-          { id: 'students', label: 'Students', icon: Users },
-          { id: 'myrequests', label: 'Requests', icon: UserCheck },
+          { id: 'request', label: 'Requests', icon: UserCheck },
           { id: 'jobboard', label: 'My Postings', icon: Briefcase },
           { id: 'events', label: 'Events', icon: Calendar },
         ]

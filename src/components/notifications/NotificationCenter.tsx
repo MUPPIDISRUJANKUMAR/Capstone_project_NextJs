@@ -108,6 +108,37 @@ export const NotificationCenter: React.FC = () => {
     }
   };
 
+  const handleRequestAction = async (notificationId: string, requestId: string, action: 'approve' | 'disapprove') => {
+    try {
+      const response = await fetch('/api/chat-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: action === 'approve' ? 'approve' : 'decline',
+          requestId,
+          fromUserId: user?.id
+        })
+      });
+
+      if (response.ok) {
+        // Mark the notification as read and remove it from the list
+        setNotifications(prev => 
+          prev.filter(n => n.id !== notificationId)
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+        
+        // Refresh notifications to get any new ones
+        fetchNotifications();
+      } else {
+        console.error('Failed to process request action');
+      }
+    } catch (error) {
+      console.error('Error handling request action:', error);
+    }
+  };
+
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'chat_request':
@@ -195,10 +226,10 @@ export const NotificationCenter: React.FC = () => {
                           key={notification.id}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className={`p-4 cursor-pointer transition-colors hover:bg-muted/50 ${
+                          className={`p-4 transition-colors hover:bg-muted/50 ${
                             !notification.read ? getNotificationColor(notification.type) : ''
                           }`}
-                          onClick={() => !notification.read && markAsRead(notification.id)}
+                          onClick={() => !notification.read && notification.type !== 'chat_request' && markAsRead(notification.id)}
                         >
                           <div className="flex items-start gap-3">
                             <div className="mt-0.5">
@@ -216,9 +247,33 @@ export const NotificationCenter: React.FC = () => {
                               <p className="text-xs text-muted-foreground mb-2">
                                 {notification.message}
                               </p>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs text-muted-foreground mb-3">
                                 {notification.createdAt?.toLocaleString()}
                               </p>
+                              
+                              {/* Show approve/disapprove buttons for alumni on chat requests */}
+                              {notification.type === 'chat_request' && user?.role === 'alumni' && notification.requestId && (
+                                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="h-7 px-3 text-xs"
+                                    onClick={() => handleRequestAction(notification.id, notification.requestId!, 'approve')}
+                                  >
+                                    <Check className="h-3 w-3 mr-1" />
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 px-3 text-xs"
+                                    onClick={() => handleRequestAction(notification.id, notification.requestId!, 'disapprove')}
+                                  >
+                                    <X className="h-3 w-3 mr-1" />
+                                    Disapprove
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </motion.div>
