@@ -11,9 +11,11 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (!loading && user) {
-      // Determine if the user has a sufficiently complete profile to view
-      // We can check for a few key fields, not just bio
-      const hasProfileData = (user as any).bio || (user as any).skills?.length > 0 || (user as any).major;
+      // More robust check to see if a profile is "complete"
+      const hasProfileData =
+        ((user as any).bio && (user as any).bio !== 'Student account' && (user as any).bio !== 'Alumni professional') ||
+        ((user as any).skills && (user as any).skills.length > 0 && (user as any).skills[0] !== '') ||
+        ((user as any).major && (user as any).major !== '');
 
       if (hasProfileData) {
         setIsEditing(false);

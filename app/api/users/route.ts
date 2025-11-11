@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server'
 import { collection, getDocs, query, where, Query } from 'firebase/firestore'
 import { db } from '../../../src/lib/firebase'
+import { adminDb } from '@/lib/firebase-admin'
 
 export async function GET(request: Request) {
-  if (!db) {
-    console.error('Firebase database not initialized');
+  console.log('--- API Route: /api/users GET request received ---');
+  console.log('Checking adminDb:', adminDb ? 'Initialized' : 'Not initialized');
+
+  if (!adminDb) {
+    console.error('Firebase Admin database not initialized');
     return NextResponse.json({ 
-      error: 'Database not available',
-      message: 'Firebase is not properly configured. Please check environment variables.'
+      error: 'Admin database not available',
+      message: 'Firebase Admin is not properly configured. Please check environment variables.'
     }, { status: 500 })
   }
 
@@ -16,8 +20,9 @@ export async function GET(request: Request) {
     const role = searchParams.get('role')
 
     console.log('Fetching users with role:', role);
+    console.log('Using adminDb for user fetching.');
 
-    let usersQuery: Query = collection(db, 'users')
+    let usersQuery: Query = collection(adminDb, 'users')
     
     // If role is specified, filter by role
     if (role) {
@@ -34,11 +39,13 @@ export async function GET(request: Request) {
     
     return NextResponse.json({ users })
   } catch (error) {
-    console.error('Error fetching users:', error);
+    console.error('--- ERROR in /api/users GET request ---');
+    console.error(error);
     return NextResponse.json(
       { 
         error: 'Failed to fetch users',
-        message: error instanceof Error ? error.message : 'Unknown error'
+        message: error instanceof Error ? error.message : 'Unknown error',
+        details: error
       },
       { status: 500 }
     )
@@ -46,18 +53,27 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!db) {
-    return NextResponse.json({ error: 'Database not available' }, { status: 500 })
+  console.log('--- API Route: /api/users POST request received ---');
+  console.log('Checking adminDb:', adminDb ? 'Initialized' : 'Not initialized');
+
+  if (!adminDb) {
+    console.error('Firebase Admin database not initialized');
+    return NextResponse.json({ error: 'Admin database not available' }, { status: 500 })
   }
 
   try {
     const body = await request.json()
     // Add user creation logic here
+    console.log('Using adminDb for user creation.');
     return NextResponse.json({ message: 'User created successfully' })
   } catch (error) {
-    console.error('Error creating user:', error)
+    console.error('--- ERROR in /api/users POST request ---');
+    console.error(error);
     return NextResponse.json(
-      { error: 'Failed to create user' },
+      { 
+        error: 'Failed to create user',
+        details: error
+      },
       { status: 500 }
     )
   }

@@ -48,72 +48,50 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const fetchUserProfile = async (uid: string, firebaseUser?: FirebaseUser): Promise<AppUser | null> => {
-  if (firebaseUser) {
-    console.log(`Creating profile for: ${firebaseUser.email}`);
-    console.log(`Firebase User UID: ${firebaseUser.uid}`);
-    
-    // First try to get role from Firestore (if available)
-    let userRole: 'student' | 'alumni' | 'admin' = 'student'; // Default
-    
-    if (db) {
-      try {
-        console.log('Checking Firestore for existing role...');
-        console.log(`Looking for document at: users/${uid}`);
-        
-        const ref = doc(db, "users", uid);
-        const snap = await getDoc(ref);
-        
-        console.log(`Document exists: ${snap.exists()}`);
-        
-        if (snap.exists()) {
-          const existingProfile = snap.data() as any;
-          console.log('Found existing profile data:', existingProfile);
-          userRole = existingProfile.role || 'student';
-          console.log(`Found existing role in Firestore: ${userRole}`);
-        } else {
-          console.log('No existing profile in Firestore, using default role: student');
-          console.log('This might be a permissions issue or UID mismatch');
-          
-          // Let's try to list some users to debug
-          try {
-            console.log('Attempting to debug - checking if we can read any users...');
-            const usersRef = collection(db, "users");
-            const debugSnap = await getDocs(usersRef);
-            console.log(`Total users in Firestore: ${debugSnap.docs.length}`);
-            debugSnap.docs.forEach(doc => {
-              console.log(`Available user: ${doc.id} -> ${doc.data().email} (${doc.data().role})`);
-            });
-          } catch (debugError) {
-            console.error('Debug query failed:', debugError);
-          }
-        }
-      } catch (error) {
-        console.error('Firestore check failed with error:', error);
-        console.log('Using default role: student');
-      }
+  if (!firebaseUser) return null;
+
+  console.log(`[fetchUserProfile] Starting for UID: ${uid}`);
+  const userRef = doc(db, "users", uid);
+  let userProfile: AppUser | null = null;
+
+  try {
+    console.log(`[fetchUserProfile] Querying Firestore for document: users/${uid}`);
+    const docSnap = await getDoc(userRef);
+
+    if (docSnap.exists()) {
+      console.log("[fetchUserProfile] Document found in Firestore.");
+      userProfile = docSnap.data() as AppUser;
+      console.log("[fetchUserProfile] Fetched data:", userProfile);
     } else {
-      console.log('Firestore not available, using default role: student');
+      console.log(`[fetchUserProfile] No profile found for UID: ${uid}. Creating a default one.`);
+      const defaultProfile: AppUser = {
+        id: uid,
+        email: firebaseUser.email || '',
+        name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+        role: 'student',
+        verified: firebaseUser.emailVerified,
+        createdAt: serverTimestamp(),
+        theme: 'light',
+      };
+      await setDoc(userRef, defaultProfile);
+      userProfile = defaultProfile;
+      console.log("[fetchUserProfile] Created and saved default profile:", userProfile);
     }
-    
-    // Create profile from Firebase Auth with correct role
-    const authProfile: AppUser = {
-      id: firebaseUser.uid,
-      email: firebaseUser.email || '',
-      name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-      role: userRole, // Use role from Firestore or default to student
-      skills: [],
-      interests: [],
-      bio: userRole === 'alumni' ? 'Alumni professional' : 'Student account',
-      graduationYear: undefined,
-      major: '',
-      avatar: firebaseUser.photoURL || ''
-    };
-    
-    console.log(`✅ Created auth-based profile: ${authProfile.name} (${authProfile.role})`);
-    return authProfile;
+  } catch (error) {
+    console.error("[fetchUserProfile] Error fetching or creating user profile:", error);
+    return null;
   }
-  
-  return null;
+
+  const finalProfile = {
+    ...userProfile,
+    id: uid,
+    email: firebaseUser.email || '',
+    name: firebaseUser.displayName || userProfile.name,
+    verified: firebaseUser.emailVerified,
+  };
+
+  console.log("[fetchUserProfile] Final merged profile:", finalProfile);
+  return finalProfile;
 };
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({
@@ -158,14 +136,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
                 setUser(profile);
                 console.log('🎯 Current user state after setUser:', profile);
                 
-                // Use localStorage for theme since we're not using Firestore
-                const savedTheme = localStorage.getItem("theme") as Theme;
-                if (savedTheme) {
-                  setTheme(savedTheme);
-                } else if (
-                    window.matchMedia("(prefers-color-scheme: dark)").matches
-                  ) {
-                  setTheme("dark");
+                if (profile.theme) {
+                  setTheme(profile.theme);
+                } else {
+                  const savedTheme = localStorage.getItem("theme") as Theme;
+                  if (savedTheme) {
+                    setTheme(savedTheme);
+                  } else if (
+                      window.matchMedia("(prefers-color-scheme: dark)").matches
+                    ) {
+                    setTheme("dark");
+                  }
                 }
               } else {
                 console.warn('❌ Could not create profile for authenticated user');
@@ -202,10 +183,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   }, [theme]);
 
   const toggleTheme = async () => {
+    if (!user) return;
     const newTheme = theme === "light" ? "dark" : "light";
     setTheme(newTheme);
-    // Store theme in localStorage only (no Firestore dependency)
-    localStorage.setItem("theme", newTheme);
+    await updateUserProfile({ theme: newTheme });
   };
 
   const register = async (
@@ -245,7 +226,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         verified: cred.user.emailVerified,
         skills: [],
         interests: [],
-        theme: theme, // Set default theme on registration
+        theme: 'light', // Set default theme on registration
         ...rest,
       } as any;
 
