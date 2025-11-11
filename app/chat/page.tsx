@@ -18,15 +18,16 @@ export default function ChatPage() {
   const [alumni, setAlumni] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch alumni from Firestore
+  // Fetch users (students and alumni) from Firestore
   useEffect(() => {
-    const fetchAlumni = async () => {
+    const fetchUsers = async () => {
       try {
-        const response = await fetch('/api/users?role=alumni');
+        const response = await fetch('/api/users');
         const data = await response.json();
         
         if (response.ok) {
-          setAlumni(data.users || []);
+          const list = (data.users || []).filter((u: any) => u.id !== user?.id);
+          setAlumni(list);
         } else {
           // If Firebase is not configured, show mock data for testing
           console.warn('Firebase not configured, using mock data');
@@ -34,14 +35,14 @@ export default function ChatPage() {
             {
               id: "mock-alumni-1",
               name: "Sarah Rodriguez (Demo)",
-              role: "Software Engineer @ Google",
+              role: "alumni",
               avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face",
               email: "sarah.rodriguez@alumni.university.edu"
             },
             {
               id: "mock-alumni-2", 
               name: "James Park (Demo)",
-              role: "Product Manager @ Microsoft",
+              role: "student",
               avatar: "https://images.unsplash.com/photo-1511367461989-f85a21fda167?w=150&h=150&fit=crop&crop=face",
               email: "james.park@alumni.university.edu"
             }
@@ -54,7 +55,7 @@ export default function ChatPage() {
           {
             id: "mock-alumni-1",
             name: "Sarah Rodriguez (Demo)",
-            role: "Software Engineer @ Google",
+            role: "alumni",
             avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face",
             email: "sarah.rodriguez@alumni.university.edu"
           }
@@ -65,9 +66,9 @@ export default function ChatPage() {
     };
 
     if (isAuthenticated) {
-      fetchAlumni();
+      fetchUsers();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -106,7 +107,7 @@ export default function ChatPage() {
                   <div className="flex items-center justify-center h-[400px] border rounded-lg bg-muted/20">
                     <div className="text-center space-y-3">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                      <p className="text-sm text-muted-foreground">Loading alumni...</p>
+                      <p className="text-sm text-muted-foreground">Loading users...</p>
                     </div>
                   </div>
                 ) : (
@@ -140,7 +141,7 @@ export default function ChatPage() {
                       <div>
                         <h3 className="font-medium">No Active Chat Session</h3>
                         <p className="text-sm text-muted-foreground">
-                          Send a request to connect with alumni, or wait for your requests to be accepted
+                          Send a request to connect, or wait for your requests to be accepted
                         </p>
                       </div>
                     </div>

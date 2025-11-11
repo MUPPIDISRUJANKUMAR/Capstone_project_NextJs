@@ -7,10 +7,11 @@ import { Button } from '../ui/button'
 import { Card, CardContent } from '../ui/card'
 import { Badge } from '../ui/badge'
 import { useAuth } from '../../contexts/AuthContext'
+import { useRouter } from 'next/navigation'
 
 interface Notification {
   id: string
-  type: 'chat_request' | 'request_accepted' | 'request_declined' | 'request_accepted_confirm'
+  type: 'chat_request' | 'request_accepted' | 'request_declined' | 'request_accepted_confirm' | 'chat_message'
   title: string
   message: string
   read: boolean
@@ -24,6 +25,7 @@ export const NotificationCenter: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const router = useRouter();
 
   useEffect(() => {
     if (user?.id) {
@@ -32,6 +34,22 @@ export const NotificationCenter: React.FC = () => {
       const interval = setInterval(fetchNotifications, 30000);
       return () => clearInterval(interval);
     }
+  }, [user?.id]);
+
+  // Fetch immediately when the dropdown opens
+  useEffect(() => {
+    if (isOpen && user?.id) {
+      fetchNotifications();
+    }
+  }, [isOpen, user?.id]);
+
+  // Fetch when window regains focus
+  useEffect(() => {
+    const onFocus = () => {
+      if (user?.id) fetchNotifications();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [user?.id]);
 
   const fetchNotifications = async () => {
@@ -143,6 +161,8 @@ export const NotificationCenter: React.FC = () => {
     switch (type) {
       case 'chat_request':
         return <MessageSquare className="h-4 w-4 text-blue-500" />;
+      case 'chat_message':
+        return <MessageSquare className="h-4 w-4 text-purple-500" />;
       case 'request_accepted':
       case 'request_accepted_confirm':
         return <CheckCircle className="h-4 w-4 text-green-500" />;
@@ -157,6 +177,8 @@ export const NotificationCenter: React.FC = () => {
     switch (type) {
       case 'chat_request':
         return 'border-blue-200 bg-blue-50';
+      case 'chat_message':
+        return 'border-purple-200 bg-purple-50';
       case 'request_accepted':
       case 'request_accepted_confirm':
         return 'border-green-200 bg-green-50';
@@ -229,7 +251,23 @@ export const NotificationCenter: React.FC = () => {
                           className={`p-4 transition-colors hover:bg-muted/50 ${
                             !notification.read ? getNotificationColor(notification.type) : ''
                           }`}
-                          onClick={() => !notification.read && notification.type !== 'chat_request' && markAsRead(notification.id)}
+                          onClick={() => {
+                            // For chat messages, navigate to chat and mark as read
+                            if (notification.type === 'chat_message') {
+                              const routeId = notification.requestId || notification.sessionId;
+                              if (routeId) {
+                                router.push(`/chat/${routeId}`);
+                              }
+                              if (!notification.read) {
+                                markAsRead(notification.id);
+                              }
+                              return;
+                            }
+                            // Default: mark as read on click (except actionable chat_request)
+                            if (!notification.read && notification.type !== 'chat_request') {
+                              markAsRead(notification.id);
+                            }
+                          }}
                         >
                           <div className="flex items-start gap-3">
                             <div className="mt-0.5">

@@ -80,7 +80,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, isMobileSidebarOp
         break;
     }
 
-    return [...baseItems, ...roleSpecificItems, { id: 'settings', label: 'Settings', icon: Settings }];
+    const adjustedBase = user?.role === 'alumni'
+      ? baseItems.map((item) => item.id === 'profile' ? { ...item, id: 'alumni/profile' } : item)
+      : baseItems;
+
+    return [...adjustedBase, ...roleSpecificItems, { id: 'settings', label: 'Settings', icon: Settings }];
   }
 
   const menuItems = getMenuItems()

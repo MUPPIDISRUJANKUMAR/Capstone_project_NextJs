@@ -26,40 +26,72 @@ const recommendationCache = new Map<string, AIMatch[]>()
 
 export const StudentDashboard: React.FC = () => {
   const router = useRouter();
-  const stats = [
-    { label: "Active Connections", value: "12", icon: Users, trend: "+2" },
-    { label: "Messages", value: "28", icon: MessageSquare, trend: "+5" },
-    { label: "Job Applications", value: "7", icon: Briefcase, trend: "+1" },
-    { label: "Upcoming Events", value: "3", icon: Calendar, trend: "0" },
-  ];
-
-  const recentActivity = [
-    {
-      type: "message",
-      text: "New message from Sarah Rodriguez",
-      time: "2 hours ago",
-    },
-    {
-      type: "match",
-      text: "New alumni match: Michael Chen",
-      time: "5 hours ago",
-    },
-    {
-      type: "application",
-      text: "Applied to Software Engineer Intern at TechCorp",
-      time: "1 day ago",
-    },
-    {
-      type: "event",
-      text: "Registered for Career Fair 2024",
-      time: "2 days ago",
-    },
-  ];
+  const [stats, setStats] = useState<Array<{ label: string; value: string; icon: any; trend: string }>>([
+    { label: "Active Connections", value: "0", icon: Users, trend: "0" },
+    { label: "Messages", value: "0", icon: MessageSquare, trend: "0" },
+    { label: "Job Applications", value: "0", icon: Briefcase, trend: "0" },
+    { label: "Upcoming Events", value: "0", icon: Calendar, trend: "0" },
+  ])
+  const [recentActivity, setRecentActivity] = useState<Array<{ type: string; text: string; time: string }>>([])
 
   const { user } = useAuth()
   const [aiRecommendations, setAiRecommendations] = useState<AIMatch[]>([])
   const [loadingRecommendations, setLoadingRecommendations] = useState(false)
   const [hasRequestedRecommendations, setHasRequestedRecommendations] = useState(false)
+  const [pendingMap, setPendingMap] = useState<Record<string, { status: string; createdAt: string }>>({})
+  const [blockedUntil, setBlockedUntil] = useState<Record<string, number>>({})
+
+  // Load live stats and activity for the student
+  useEffect(() => {
+    const loadLive = async () => {
+      if (!user || user.role !== 'student') return
+      try {
+        // Connections (accepted requests sent by the student)
+        const accRes = await fetch(`/api/chat-requests?userId=${encodeURIComponent(user.id)}&status=approved&role=student`)
+        const accData = await accRes.json()
+        const connections = accRes.ok && Array.isArray(accData.requests) ? accData.requests.length : 0
+
+        // Pending requests sent by the student (for trend/pending info)
+        const pendRes = await fetch(`/api/chat-requests?userId=${encodeURIComponent(user.id)}&status=pending&role=student`)
+        const pendData = await pendRes.json()
+        const pending = pendRes.ok && Array.isArray(pendData.requests) ? pendData.requests.length : 0
+
+        // Messages: use connections as a proxy if no messages API is present
+        const messages = connections
+
+        setStats([
+          { label: 'Active Connections', value: String(connections), icon: Users, trend: pending > 0 ? `+${pending}` : '0' },
+          { label: 'Messages', value: String(messages), icon: MessageSquare, trend: '0' },
+          { label: 'Job Applications', value: '0', icon: Briefcase, trend: '0' },
+          { label: 'Upcoming Events', value: '0', icon: Calendar, trend: '0' },
+        ])
+
+        // Recent activity based on the latest sent requests
+        const sentRes = await fetch(`/api/chat-requests?userId=${encodeURIComponent(user.id)}&status=sent`)
+        const sentData = await sentRes.json()
+        let items: Array<{ type: string; text: string; time: string }> = []
+        if (sentRes.ok && Array.isArray(sentData.requests)) {
+          const sorted = [...sentData.requests].sort((a: any, b: any) => new Date(b.createdAt || b.updatedAt || 0).getTime() - new Date(a.createdAt || a.updatedAt || 0).getTime())
+          const top = sorted.slice(0, 4)
+          for (const r of top) {
+            try {
+              const ures = await fetch(`/api/users/${r.toUserId}`)
+              const u = ures.ok ? await ures.json() : { name: 'User' }
+              items.push({
+                type: 'request',
+                text: `Request to ${u.name || 'User'} is ${r.status}`,
+                time: new Date(r.createdAt || r.updatedAt || Date.now()).toLocaleString()
+              })
+            } catch {}
+          }
+        }
+        setRecentActivity(items)
+      } catch (e) {
+        // keep defaults
+      }
+    }
+    loadLive()
+  }, [user?.id])
 
   useEffect(() => {
     if (!user || user.role !== 'student') {
@@ -100,7 +132,13 @@ export const StudentDashboard: React.FC = () => {
         console.error('Failed to fetch recommendations', data)
         setAiRecommendations([])
       } else {
-        const matches = data.matches || []
+        let matches: AIMatch[] = data.matches || []
+        // Filter out locally blocked alumni for 5 minutes
+        const now = Date.now()
+        matches = matches.filter(m => {
+          const until = blockedUntil[m.alumni.id]
+          return !until || now < 0 || now > until
+        })
         setAiRecommendations(matches)
         recommendationCache.set(user.id, matches)
       }
@@ -112,23 +150,57 @@ export const StudentDashboard: React.FC = () => {
     }
   }
 
-  const handleRequest = async (alumniId: string) => {
-    if (!db || !user) return
+  const SIX_HOURS_MS = 6 * 60 * 60 * 1000
+  const FIVE_MIN_MS = 5 * 60 * 1000
+
+  const refreshPendingMap = async () => {
+    if (!user) return
     try {
-      const requestsRef = collection(db, 'mentorship_requests')
-      await addDoc(requestsRef, {
-        type: 'mentorship',
-        fromStudentId: user.id,
-        toAlumniId: alumniId,
-        status: 'pending',
-        title: 'Request from AI Recommendations',
-        message: '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+      const resp = await fetch(`/api/chat-requests?userId=${encodeURIComponent(user.id)}&status=sent`)
+      const data = await resp.json()
+      if (resp.ok && Array.isArray(data.requests)) {
+        const map: Record<string, { status: string; createdAt: string }> = {}
+        for (const r of data.requests as any[]) {
+          // Only track requests sent by this student to alumni
+          map[r.toUserId] = { status: r.status, createdAt: r.createdAt || r.updatedAt || new Date().toISOString() }
+        }
+        setPendingMap(map)
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    if (user?.id && user.role === 'student') {
+      refreshPendingMap()
+    }
+  }, [user?.id])
+
+  const isPendingRecent = (alumniId: string) => {
+    const entry = pendingMap[alumniId]
+    if (!entry) return false
+    if (entry.status !== 'pending') return false
+    const ts = new Date(entry.createdAt).getTime()
+    return Date.now() - ts < SIX_HOURS_MS
+  }
+
+  const handleRequest = async (alumniId: string) => {
+    if (!user) return
+    // Prevent duplicate within 6 hours if pending exists
+    if (isPendingRecent(alumniId)) return
+    try {
+      const res = await fetch('/api/chat-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send', fromUserId: user.id, toUserId: alumniId, message: '' })
       })
-      await loadRecommendations()
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setPendingMap(prev => ({ ...prev, [alumniId]: { status: 'pending', createdAt: new Date().toISOString() } }))
+      }
     } catch (err) {
-      console.error('Failed to create mentorship request', err)
+      console.error('Failed to send chat request', err)
     }
   }
 
@@ -141,7 +213,10 @@ export const StudentDashboard: React.FC = () => {
         alumniId,
         blockedAt: new Date().toISOString(),
       })
-      await loadRecommendations()
+      const until = Date.now() + FIVE_MIN_MS
+      setBlockedUntil(prev => ({ ...prev, [alumniId]: until }))
+      // Immediately filter from current list
+      setAiRecommendations(prev => prev.filter(m => m.alumni.id !== alumniId))
     } catch (err) {
       console.error('Failed to block alumni recommendation', err)
     }
@@ -155,9 +230,9 @@ export const StudentDashboard: React.FC = () => {
     >
       {/* Welcome Section */}
       <div className="bg-gradient-to-r from-primary/10 via-blue-500/10 to-purple-500/10 rounded-xl p-6 border">
-        <h1 className="text-2xl font-bold mb-2">Welcome back, Alex!</h1>
+        <h1 className="text-2xl font-bold mb-2">Welcome back, {user?.name || 'Student'}!</h1>
         <p className="text-muted-foreground">
-          You have 3 new alumni matches and 2 pending mentorship requests.
+          Check your latest connections and recommendations.
         </p>
       </div>
 
@@ -170,26 +245,17 @@ export const StudentDashboard: React.FC = () => {
               key={stat.label}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
             >
               <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {stat.label}
-                      </p>
-                      <p className="text-2xl font-bold">{stat.value}</p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {stat.trend !== "0" && (
-                        <span className="text-sm text-green-600 font-medium">
-                          {stat.trend}
-                        </span>
-                      )}
-                      <Icon className="h-5 w-5 text-muted-foreground" />
-                    </div>
+                <CardContent className="flex items-center justify-between p-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    <p className="text-2xl font-bold">{stat.value}</p>
+                    {stat.trend !== "0" && (
+                      <span className="text-sm text-green-600 font-medium">{stat.trend}</span>
+                    )}
                   </div>
+                  <Icon className="h-6 w-6 text-muted-foreground" />
                 </CardContent>
               </Card>
             </motion.div>
@@ -258,7 +324,11 @@ export const StudentDashboard: React.FC = () => {
                     ))}
                   </div>
                   <div className="flex gap-2 mt-2">
-                    <Button size="sm" onClick={() => handleRequest(match.alumni.id)}>Request</Button>
+                    {isPendingRecent(match.alumni.id) ? (
+                      <Badge variant="secondary">Pending</Badge>
+                    ) : (
+                      <Button size="sm" onClick={() => handleRequest(match.alumni.id)}>Request</Button>
+                    )}
                     <Button size="sm" variant="ghost" onClick={() => handleRemove(match.alumni.id)}>Remove</Button>
                   </div>
                 </div>
