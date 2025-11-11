@@ -6,6 +6,10 @@ export interface User {
   name: string;
   avatar: string;
   role: 'student' | 'alumni' | 'admin';
+  verified?: boolean;
+  theme?: 'light' | 'dark';
+  createdAt?: string;
+  updatedAt?: string;
   bio?: string;
   skills?: string[];
   interests?: string[];

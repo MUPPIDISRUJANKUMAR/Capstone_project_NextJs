@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server'
-import { collection, getDocs, query, where, Query } from 'firebase/firestore'
-import { db } from '../../../src/lib/firebase'
-import { adminDb } from '@/lib/firebase-admin'
+import { adminDb } from '../../../src/lib/firebase-admin'
 
 export async function GET(request: Request) {
   console.log('--- API Route: /api/users GET request received ---');
@@ -9,9 +7,14 @@ export async function GET(request: Request) {
 
   if (!adminDb) {
     console.error('Firebase Admin database not initialized');
+    console.log('🔧 Firebase Admin Setup Required:');
+    console.log('1. Make sure FIREBASE_ADMIN_CLIENT_EMAIL is set');
+    console.log('2. Make sure FIREBASE_ADMIN_PRIVATE_KEY is set');
+    console.log('3. Make sure NEXT_PUBLIC_FIREBASE_PROJECT_ID is set');
     return NextResponse.json({ 
       error: 'Admin database not available',
-      message: 'Firebase Admin is not properly configured. Please check environment variables.'
+      message: 'Firebase Admin is not properly configured. Please check environment variables.',
+      users: [] // Return empty array as fallback
     }, { status: 500 })
   }
 
@@ -22,14 +25,14 @@ export async function GET(request: Request) {
     console.log('Fetching users with role:', role);
     console.log('Using adminDb for user fetching.');
 
-    let usersQuery: Query = collection(adminDb, 'users')
+    let usersQuery = adminDb.collection('users')
     
     // If role is specified, filter by role
     if (role) {
-      usersQuery = query(usersQuery, where('role', '==', role))
+      usersQuery = usersQuery.where('role', '==', role) as any
     }
 
-    const snapshot = await getDocs(usersQuery)
+    const snapshot = await usersQuery.get()
     const users = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -58,7 +61,10 @@ export async function POST(request: Request) {
 
   if (!adminDb) {
     console.error('Firebase Admin database not initialized');
-    return NextResponse.json({ error: 'Admin database not available' }, { status: 500 })
+    return NextResponse.json({ 
+      error: 'Admin database not available',
+      message: 'Firebase Admin is not properly configured. Please check environment variables.'
+    }, { status: 500 })
   }
 
   try {
