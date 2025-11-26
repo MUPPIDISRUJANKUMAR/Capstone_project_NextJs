@@ -99,7 +99,6 @@ export async function POST(request: NextRequest) {
           participantIds: [requestData.fromUserId, requestData.toUserId],
           requestId: requestId,
           createdAt: Timestamp.now(),
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
           messages: []
         });
 

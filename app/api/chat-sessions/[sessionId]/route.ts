@@ -28,16 +28,10 @@ export async function GET(
     const sessionDoc = sessionSnapshot.docs[0];
     const sessionData = sessionDoc.data();
 
-    // Check if session has expired
-    if (sessionData.expiresAt && sessionData.expiresAt.toDate() < new Date()) {
-      return NextResponse.json({ error: 'Session expired' }, { status: 410 });
-    }
-
     return NextResponse.json({
       sessionId: sessionDoc.id,
       messages: sessionData.messages || [],
-      participants: sessionData.participantIds,
-      expiresAt: sessionData.expiresAt?.toDate()
+      participants: sessionData.participantIds
     });
   } catch (error) {
     console.error('Error fetching chat session:', error);
@@ -75,11 +69,6 @@ export async function POST(
 
     const sessionDoc = sessionSnapshot.docs[0];
     const sessionData = sessionDoc.data();
-
-    // Check if session has expired
-    if (sessionData.expiresAt && sessionData.expiresAt.toDate() < new Date()) {
-      return NextResponse.json({ error: 'Session expired' }, { status: 410 });
-    }
 
     // Check if sender is a participant
     if (!sessionData.participantIds.includes(senderId)) {
